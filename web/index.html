@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Prompter</title>
+  <link rel="stylesheet" href="prompter.css" />
+</head>
+<body>
+  <aside id="rail">
+    <header>
+      <h1>Prompter</h1>
+      <button id="btn-hide-rail" title="Hide panel (Tab)">⇤</button>
+    </header>
+
+    <section>
+      <label class="row"><span>Script</span>
+        <select id="script-select"></select>
+      </label>
+      <div class="row btns">
+        <button id="btn-new">New</button>
+        <button id="btn-edit">Edit</button>
+        <button id="btn-save" disabled>Save</button>
+        <button id="btn-delete" class="danger">Delete</button>
+      </div>
+    </section>
+
+    <section>
+      <label class="row"><span>Language</span>
+        <select id="language">
+          <option value="en">English</option>
+          <option value="da">Dansk</option>
+        </select>
+      </label>
+      <label class="row"><span>Speech</span>
+        <select id="backend">
+          <option value="whisper">Local Whisper (private)</option>
+          <option value="browser">Browser API (cloud)</option>
+        </select>
+      </label>
+      <div class="row btns">
+        <button id="btn-listen" class="primary">Start listening</button>
+        <button id="btn-reset" title="Back to top (Home)">Top</button>
+      </div>
+      <div class="row meter"><div id="level"></div></div>
+      <div id="status" class="muted">idle</div>
+    </section>
+
+    <section>
+      <label class="row"><span>Font size</span><input id="font-size" type="range" min="28" max="120" step="2" /></label>
+      <label class="row"><span>Column width</span><input id="col-width" type="range" min="40" max="100" step="2" /></label>
+      <label class="row"><span>Eye line</span><input id="eyeline" type="range" min="15" max="70" step="1" /></label>
+      <label class="row"><span>Line height</span><input id="line-height" type="range" min="1.1" max="1.8" step="0.05" /></label>
+      <label class="row check"><input id="mirror-h" type="checkbox" /><span>Mirror horizontally (M)</span></label>
+      <label class="row check"><input id="mirror-v" type="checkbox" /><span>Mirror vertically (V)</span></label>
+      <label class="row check"><input id="dim-past" type="checkbox" /><span>Dim what you've read</span></label>
+      <label class="row check"><input id="auto-scroll" type="checkbox" /><span>Fallback: constant scroll</span></label>
+      <label class="row"><span>Scroll speed</span><input id="scroll-speed" type="range" min="10" max="200" step="5" /></label>
+      <div class="row btns">
+        <button id="btn-fullscreen">Fullscreen (F)</button>
+        <button id="btn-debug">Debug (D)</button>
+      </div>
+    </section>
+
+    <section class="keys muted">
+      <div><kbd>Space</kbd> start/stop listening</div>
+      <div><kbd>↑</kbd><kbd>↓</kbd> nudge position, <kbd>Home</kbd> top</div>
+      <div><kbd>+</kbd><kbd>−</kbd> font, <kbd>M</kbd>/<kbd>V</kbd> mirror, <kbd>F</kbd> fullscreen</div>
+      <div><kbd>Tab</kbd> panel, <kbd>E</kbd> edit, <kbd>D</kbd> debug</div>
+    </section>
+  </aside>
+
+  <main id="stage">
+    <button id="btn-show-rail" title="Show panel (Tab)" hidden>⇥</button>
+    <div id="eyeline-marker"></div>
+    <div id="viewport">
+      <div id="script"></div>
+    </div>
+    <div id="editor" hidden>
+      <input id="editor-name" placeholder="script-name.md" />
+      <textarea id="editor-text" spellcheck="false"></textarea>
+      <div class="btns"><button id="editor-save" class="primary">Save and show</button><button id="editor-cancel">Cancel</button></div>
+    </div>
+    <div id="debug" hidden></div>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[project]
+name = "prompter"
+version = "0.1.0"
+description = "Voice-following teleprompter, local, Danish and English"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "mlx-whisper>=0.4",
+    "numpy>=1.26",
+]
+
+[tool.uv]
+package = false
