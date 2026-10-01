@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tokenizeScript, tokenizeHypothesis, align, similarity, isDegenerate } from "../web/aligner.js";
+import { tokenizeScript, tokenizeHypothesis, align, similarity, isDegenerate, noteRanges } from "../web/aligner.js";
 
 const EN = `Good evening everyone, and thank you for coming.
 A year ago the club had twelve active members under forty and a court that sat empty four nights a week. Tonight there are sixty of us. The court is booked until ten.
@@ -144,4 +144,25 @@ test("a stutter that the script really contains still aligns in full", () => {
   const r = align(script, hyp, 0);
   assert.equal(r.matches, 6);
   assert.equal(script[r.cursor].norm, "no");
+});
+
+test("[bracketed notes] are shown but never tokenized", () => {
+  const text = "Good evening everyone. [pause, look up] Thank you for coming. [slide 2: the numbers]\nA year ago [beat] the club had twelve.";
+  const toks = tokenizeScript(text);
+  assert.deepEqual(toks.map((t) => t.norm), ["good", "evening", "everyone", "thank", "you", "for", "coming", "a", "year", "ago", "the", "club", "had", "twelve"]);
+  assert.equal(noteRanges(text).length, 3);
+  assert.equal(text.slice(noteRanges(text)[0].start, noteRanges(text)[0].end), "[pause, look up]");
+  // Reading straight across a note moves the cursor past it.
+  const r = align(toks, tokenizeHypothesis("everyone thank you for coming"), 1);
+  assert.equal(toks[r.cursor].norm, "coming");
+});
+
+test("an unclosed bracket is ordinary text", () => {
+  const toks = tokenizeScript("Count [one two three");
+  assert.deepEqual(toks.map((t) => t.norm), ["count", "one", "two", "three"]);
+});
+
+test("a note spanning lines is still a note", () => {
+  const toks = tokenizeScript("Start [note\nover two lines] end");
+  assert.deepEqual(toks.map((t) => t.norm), ["start", "end"]);
 });

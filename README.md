@@ -24,7 +24,7 @@ Open http://localhost:8765 in Chrome. The first start downloads `whisper-large-v
 
 ## Use
 
-1. Put scripts as `.md` or `.txt` files in `scripts/`, or create them with **New** in the app. Markdown headings render as section titles. Blank lines separate paragraphs.
+1. Put scripts as `.md` or `.txt` files in `scripts/`, or create them with **New** in the app. Markdown headings render as section titles. Blank lines separate paragraphs. Anything in `[square brackets]` is a note to yourself: it is shown dimmed on the prompter but ignored by the tracking, so `[pause]`, `[look up]` or `[slide 4]` never hold the cursor.
 2. Pick language and speech backend, press **Start listening** (or Space), grant the microphone once.
 3. Read. The current word is yellow, read text is dimmed, the eye-line marker shows where the current line is held.
 

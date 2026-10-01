@@ -1,6 +1,6 @@
 # Opening remarks
 
-Good evening everyone, and thank you for coming.
+Good evening everyone, and thank you for coming. [pause, look at the room]
 
 A year ago the club had twelve active members under forty and a court that sat empty four nights a week. Tonight there are sixty of us. The court is booked until ten. That did not happen by itself, and it did not happen because of the committee. It happened because somebody brought a friend.
 

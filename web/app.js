@@ -1,4 +1,4 @@
-import { tokenizeScript, tokenizeHypothesis, align, contextAround, isDegenerate } from "./aligner.js";
+import { tokenizeScript, tokenizeHypothesis, align, contextAround, isDegenerate, noteRanges } from "./aligner.js";
 import * as whisper from "./stt/backend-whisper.js";
 import * as browser from "./stt/backend-browser.js";
 
@@ -18,6 +18,7 @@ const state = {
   text: "",
   tokens: [],
   wordEls: [],
+  notes: [],
   cursor: -1,
   listening: false,
   backend: null,
@@ -97,6 +98,7 @@ async function saveScript(name, text) {
 function setText(text) {
   state.text = text;
   state.tokens = tokenizeScript(text);
+  state.notes = noteRanges(text);
   state.cursor = -1;
   renderScript();
   snapScroll();
@@ -125,7 +127,7 @@ function renderScript() {
     let cur = para.start;
     while (ti < tokens.length && tokens[ti].start < para.end) {
       const t = tokens[ti];
-      if (t.start > cur) p.appendChild(document.createTextNode(text.slice(cur, t.start).replace(/^#+\s/, "")));
+      if (t.start > cur) appendText(p, cur, t.start);
       const span = document.createElement("span");
       span.className = "w"; span.dataset.i = ti; span.textContent = t.display;
       span.addEventListener("click", () => setCursor(Number(span.dataset.i), true));
@@ -133,9 +135,26 @@ function renderScript() {
       state.wordEls[ti] = span;
       cur = t.end; ti++;
     }
-    if (cur < para.end) p.appendChild(document.createTextNode(text.slice(cur, para.end)));
+    if (cur < para.end) appendText(p, cur, para.end);
     container.appendChild(p);
   }
+}
+
+// Text between two tokens: plain punctuation, except [bracketed notes], which get
+// their own styling so you can see they are not part of what you say.
+function appendText(p, from, to) {
+  const text = state.text;
+  let cur = from;
+  for (const n of state.notes || []) {
+    if (n.end <= from || n.start >= to) continue;
+    const s = Math.max(n.start, from), e = Math.min(n.end, to);
+    if (s > cur) p.appendChild(document.createTextNode(text.slice(cur, s).replace(/^#+\s/, "")));
+    const span = document.createElement("span");
+    span.className = "note"; span.textContent = text.slice(s, e);
+    p.appendChild(span);
+    cur = e;
+  }
+  if (cur < to) p.appendChild(document.createTextNode(text.slice(cur, to).replace(/^#+\s/, "")));
 }
 
 // ---------- cursor + scrolling ----------

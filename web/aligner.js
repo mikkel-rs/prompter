@@ -15,10 +15,23 @@ export function normalizeWord(w) {
     .replace(/-/g, "");
 }
 
+// Character ranges of [bracketed notes]. They are shown on the prompter but never
+// spoken, so the aligner must not see them (stage directions, "[pause]", "[slide 4]").
+const NOTE_RE = /\[[^\]]*\]/gs;
+export function noteRanges(text) {
+  const out = [];
+  for (const m of text.matchAll(NOTE_RE)) out.push({ start: m.index, end: m.index + m[0].length });
+  return out;
+}
+
 // Split text into tokens with character spans so the UI can map back.
 export function tokenizeScript(text) {
   const tokens = [];
+  const notes = noteRanges(text);
+  let ni = 0;
   for (const m of text.matchAll(WORD_RE)) {
+    while (ni < notes.length && notes[ni].end <= m.index) ni++;
+    if (ni < notes.length && m.index >= notes[ni].start && m.index < notes[ni].end) continue;
     tokens.push({
       display: m[0],
       norm: normalizeWord(m[0]),

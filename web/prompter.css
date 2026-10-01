@@ -80,6 +80,7 @@ kbd { display: inline-block; background: #222; border: 1px solid #3a3a3a; border
 #script p { margin: 0 0 .8em; }
 #script .h { font-weight: 700; color: #bcbcbc; font-size: .75em; letter-spacing: .02em; margin-bottom: .6em; }
 #script .w { border-radius: .12em; transition: color 120ms; }
+#script .note { color: #6f8aa8; font-style: italic; font-weight: 400; font-size: .72em; }
 #script .w.cur { color: var(--accent); }
 #script .w.past { color: var(--fg); }
 #viewport.dim-past .w.past { color: var(--dim); }

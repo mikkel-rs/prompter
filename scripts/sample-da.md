@@ -1,6 +1,6 @@
 # Åbning
 
-Godaften alle sammen, og tak fordi I kom.
+Godaften alle sammen, og tak fordi I kom. [pause, kig op]
 
 For et år siden havde klubben tolv aktive medlemmer under fyrre og en bane, der stod tom fire aftener om ugen. I aften er vi tres. Banen er booket til klokken ti. Det er ikke sket af sig selv, og det er heller ikke sket på grund af bestyrelsen. Det er sket, fordi nogen tog en ven med.
 
