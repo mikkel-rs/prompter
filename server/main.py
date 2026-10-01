@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
+from .keepawake import KeepAwake
 from .stt import WhisperSession, model_status, warm_up
 
 log = logging.getLogger("prompter")
@@ -26,6 +27,7 @@ SCRIPTS.mkdir(parents=True, exist_ok=True)
 NAME_RE = re.compile(r"^[\w\- .()æøåÆØÅ]+\.(md|txt)$")
 
 app = FastAPI(title="prompter")
+keep_awake = KeepAwake()
 
 
 def _script_path(name: str) -> Path:
@@ -69,7 +71,7 @@ def delete_script(name: str):
 
 @app.get("/api/status")
 def status():
-    return model_status()
+    return {**model_status(), "keep_awake": keep_awake.status()}
 
 
 @app.websocket("/ws/stt")
@@ -84,8 +86,16 @@ async def stt_socket(ws: WebSocket):
         except Exception:
             pass
 
+    async def deliver(msg: dict):
+        await send(msg)
+        if msg.get("fatal"):
+            try:
+                await ws.close(code=1011, reason="sidecar failure")
+            except Exception:
+                pass
+
     def on_result(msg: dict):
-        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(send(msg)))
+        loop.call_soon_threadsafe(lambda: asyncio.ensure_future(deliver(msg)))
 
     try:
         while True:
@@ -126,8 +136,14 @@ async def stt_socket(ws: WebSocket):
 
 @app.on_event("startup")
 async def _startup():
+    keep_awake.start()
     if os.environ.get("PROMPTER_WARM", "1") == "1":
         asyncio.get_running_loop().run_in_executor(None, warm_up)
+
+
+@app.on_event("shutdown")
+async def _shutdown():
+    keep_awake.stop()
 
 
 @app.get("/")

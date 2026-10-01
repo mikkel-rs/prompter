@@ -1,4 +1,4 @@
-import { tokenizeScript, tokenizeHypothesis, align, contextAround } from "./aligner.js";
+import { tokenizeScript, tokenizeHypothesis, align, contextAround, isDegenerate } from "./aligner.js";
 import * as whisper from "./stt/backend-whisper.js";
 import * as browser from "./stt/backend-browser.js";
 
@@ -30,6 +30,10 @@ const state = {
   lastFrame: 0,
   status: "idle",
   latency: null,
+  speaking: false,
+  link: "off",            // off | ok | reconnecting | mic
+  awake: { browser: "unknown", server: null },
+  dropped: 0,
 };
 
 // ---------- settings ----------
@@ -192,6 +196,14 @@ function onHypothesis({ text, latencyMs }) {
   const hyp = tokenizeHypothesis(text);
   state.lastTail = hyp.slice(-6);
   const r = align(state.tokens, hyp, Math.max(0, state.cursor));
+  if (isDegenerate(hyp) && !(r && r.matches >= Math.min(hyp.length, 6))) {
+    // Recognizer stutter ("safe and safe and safe"). Hold rather than guess, unless the
+    // script really says that (then every word of the tail matched).
+    state.dropped++;
+    state.lastAlign = null;
+    renderDebug();
+    return;
+  }
   state.lastAlign = r;
   if (r) setCursor(r.cursor);
   renderDebug();
@@ -201,7 +213,7 @@ function maybeSendContext(force) {
   if (!state.backend) return;
   if (!force && Math.abs(state.cursor - state.lastContextCursor) < 8) return;
   state.lastContextCursor = state.cursor;
-  state.backend.setContext(contextAround(state.tokens, Math.max(0, state.cursor)));
+  state.backend.setContext(contextAround(state.tokens, Math.max(0, state.cursor), 8, 20));
 }
 
 function setStatus(s) { state.status = s; $("status").textContent = s; }
@@ -217,12 +229,17 @@ async function startListening() {
   try {
     await state.backend.start({
       language: state.settings.language,
-      context: contextAround(state.tokens, Math.max(0, state.cursor)),
+      context: contextAround(state.tokens, Math.max(0, state.cursor), 8, 20),
       onHypothesis,
-      onLevel: (rms) => { if (typeof rms === "number") $("level").style.width = Math.min(100, rms * 600) + "%"; },
+      onLevel: (rms, speaking) => {
+        if (typeof rms === "number") $("level").style.width = Math.min(100, rms * 600) + "%";
+        if (typeof speaking === "boolean" && speaking !== state.speaking) { state.speaking = speaking; renderPill(); }
+      },
       onStatus: (s) => setStatus(`${kind}: ${s}`),
       onError: (e) => setStatus(`${kind}: ${e}`),
+      onLink: setLink,
     });
+    if (kind === "browser") setLink("ok");
   } catch (e) {
     await stopListening(`${kind}: ${e.message || e}`);
   }
@@ -234,8 +251,53 @@ async function stopListening(reason = "idle") {
   const b = state.backend; state.backend = null;
   try { await b?.stop(); } catch {}
   $("level").style.width = "0%";
+  setLink("off");
   setStatus(reason);
 }
+
+// ---------- on-screen link state (visible in fullscreen) ----------
+function setLink(link) { if (state.link !== link) { state.link = link; renderPill(); } }
+function renderPill() {
+  const pill = $("link");
+  pill.className = "pill " + state.link + (state.link === "ok" && !state.speaking ? " quiet" : "");
+  const text = { off: "ready", ok: state.speaking ? "listening" : "quiet", reconnecting: "reconnecting", mic: "microphone lost" }[state.link] || state.link;
+  $("link-text").textContent = text;
+  const awake = state.awake.browser === "held" || state.awake.server?.active;
+  $("awake-pill").hidden = !awake;
+  pill.hidden = false;
+}
+
+// ---------- keep the screen on ----------
+// Two layers: the sidecar runs caffeinate for as long as it is up (see server/keepawake.py),
+// and this page holds a Screen Wake Lock while it is visible. Either one is enough.
+let wakeLock = null;
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) { state.awake.browser = "unsupported"; renderAwake(); return; }
+  if (document.visibilityState !== "visible") return;
+  if (wakeLock && !wakeLock.released) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    state.awake.browser = "held";
+    wakeLock.addEventListener("release", () => {
+      state.awake.browser = "released";
+      renderAwake();
+      // Released when the tab is hidden or the system takes it back. Take it again as soon as we can.
+      setTimeout(requestWakeLock, 500);
+    });
+  } catch (e) {
+    state.awake.browser = "denied: " + (e.message || e);
+  }
+  renderAwake();
+}
+function renderAwake() {
+  const b = state.awake.browser, sv = state.awake.server;
+  const server = sv == null ? "server: unknown" : sv.unreachable ? "server: unreachable" : sv.active ? "server: caffeinate on" : sv.enabled ? "server: caffeinate OFF" : "server: disabled";
+  $("awake").textContent = `Screen: browser lock ${b} · ${server}`;
+  $("awake").classList.toggle("warn", !(b === "held" || sv?.active));
+  renderPill();
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") requestWakeLock(); });
+setInterval(requestWakeLock, 30000);
 function toggleListening() { state.listening ? stopListening("idle") : startListening(); }
 
 function renderDebug() {
@@ -320,18 +382,27 @@ function toggleFullscreen() {
 }
 
 async function pollStatus() {
+  let next = 30000;
   try {
     const s = await (await fetch("/api/status")).json();
     if (!state.listening && (state.status === "idle" || state.status.startsWith("whisper model:"))) setStatus(`whisper model: ${s.state}${s.error ? " (" + s.error + ")" : ""}`);
-    if (s.state !== "ready" && s.state !== "error") setTimeout(pollStatus, 2000);
-  } catch { /* server gone */ }
+    if (s.state !== "ready" && s.state !== "error") next = 2000;
+    state.awake.server = s.keep_awake || null;
+  } catch {
+    state.awake.server = { enabled: false, active: false, unreachable: true };
+    next = 5000;
+  }
+  renderAwake();
+  setTimeout(pollStatus, next);
 }
 
 bind();
 applySettings();
+renderPill();
+requestWakeLock();
 if (!browser.isAvailable()) $("backend").querySelector('[value="browser"]').disabled = true;
 refreshScripts().then(pollStatus);
 
 // Debug hook: drive the prompter without a microphone, e.g. from the console:
 //   __prompter.hyp("for seks måneder siden satte vi os")
-window.__prompter = { state, hyp: (text) => onHypothesis({ text, latencyMs: null }), setCursor, snapScroll };
+window.__prompter = { state, hyp: (text) => onHypothesis({ text, latencyMs: null }), setCursor, snapScroll, backend: () => state.backend, startListening, stopListening };

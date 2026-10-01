@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tokenizeScript, tokenizeHypothesis, align, similarity } from "../web/aligner.js";
+import { tokenizeScript, tokenizeHypothesis, align, similarity, isDegenerate } from "../web/aligner.js";
 
 const EN = `Good evening everyone, and thank you for coming.
 A year ago the club had twelve active members under forty and a court that sat empty four nights a week. Tonight there are sixty of us. The court is booked until ten.
@@ -109,4 +109,39 @@ test("whisper-style compound split still tracks", () => {
   // Whisper writes "Godaften" as two words and glues "alle sammen" together.
   const r = align(da, tokenizeHypothesis("god aften allesammen og tak for at se"), -1);
   assert.equal(r.cursor, idx(da, "tak"));
+});
+
+test("recognizer stutters are flagged as degenerate", () => {
+  for (const t of [
+    "safe and safe and safe and safe and safe and",
+    "assistant assistant assistant assistant assistant",
+    "four to number four to number four to number four",
+    "of the right result of the right result of the right result",
+    "we'll see you in the next video and we'll see you in the next video and we'll see you in the next video",
+  ]) assert.equal(isDegenerate(tokenizeHypothesis(t)), true, t);
+});
+
+test("ordinary speech with a repeated word is not degenerate", () => {
+  for (const t of [
+    "he went from number four to number three and the harm couldn't be undone",
+    "the idea was simple the easiest way to build an agent",
+    "og tak fordi I kom for et år siden havde klubben",
+    "a court that sat empty four nights a week",
+    "no no no that is not what I meant",
+    "ja ja ja det er rigtigt",
+    "very very very good results",
+    "nej nej nej det kan vi ikke",
+    "and I said no no no",
+    "the the the easiest way to build",
+    "step by step step by step we got there",
+  ]) assert.equal(isDegenerate(tokenizeHypothesis(t)), false, t);
+});
+
+test("a stutter that the script really contains still aligns in full", () => {
+  const script = tokenizeScript("And then I said: no, no, no, no. That is not what we meant.");
+  const hyp = tokenizeHypothesis("and then i said no no no no");
+  assert.equal(isDegenerate(hyp), true);
+  const r = align(script, hyp, 0);
+  assert.equal(r.matches, 6);
+  assert.equal(script[r.cursor].norm, "no");
 });

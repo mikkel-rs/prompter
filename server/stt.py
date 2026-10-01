@@ -12,6 +12,7 @@ import logging
 import os
 import threading
 import time
+import zlib
 from collections import deque
 
 import numpy as np
@@ -23,6 +24,23 @@ WINDOW_SEC = float(os.environ.get("PROMPTER_WINDOW", "6"))
 STEP_SEC = float(os.environ.get("PROMPTER_STEP", "0.8"))
 DEFAULT_MODEL = os.environ.get("PROMPTER_MODEL", "mlx-community/whisper-large-v3-turbo")
 SILENCE_RMS = float(os.environ.get("PROMPTER_SILENCE_RMS", "0.006"))
+# Whisper's own loop detector: gzip ratio of the text. Real speech sits around 1.0-1.8,
+# a stutter like "safe and safe and safe and" compresses far better than that.
+LOOP_COMPRESSION_RATIO = float(os.environ.get("PROMPTER_LOOP_RATIO", "2.4"))
+# Retry ladder for windows that come out looping. Only the compression test triggers
+# a retry (not log-probability), so clean windows never pay for it.
+TEMPERATURES = (0.0, 0.2, 0.4)
+
+
+def compression_ratio(text: str) -> float:
+    data = text.encode("utf-8")
+    if not data:
+        return 0.0
+    return len(data) / len(zlib.compress(data))
+
+
+def looks_like_loop(text: str) -> bool:
+    return compression_ratio(text) > LOOP_COMPRESSION_RATIO
 
 _model_lock = threading.Lock()
 _loaded: dict[str, bool] = {}
@@ -82,7 +100,8 @@ class WhisperSession:
         self._stop.set()
 
     def set_context(self, text: str):
-        self._context = (text or "")[-600:]
+        # Short on purpose: a long prompt invites the decoder to copy it instead of listening.
+        self._context = (text or "")[-240:]
 
     def feed(self, pcm: bytes):
         samples = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
@@ -108,50 +127,58 @@ class WhisperSession:
         try:
             _ensure_model(self.model_name)
         except Exception as e:  # noqa: BLE001
-            self.on_result({"type": "error", "message": f"model load failed: {e}"})
+            # Fatal for this session: the server closes the socket so the page's
+            # reconnect path retries instead of sitting on a dead session.
+            self.on_result({"type": "error", "message": f"model load failed: {e}", "fatal": True})
             return
         import mlx_whisper
 
         self.on_result({"type": "status", "state": "listening"})
-        last_text = ""
         while not self._stop.is_set():
             time.sleep(STEP_SEC)
-            audio, new = self._snapshot()
-            if audio is None or new < int(0.3 * SAMPLE_RATE):
-                continue
-            tail = audio[-int(1.5 * SAMPLE_RATE):]
-            rms = float(np.sqrt(np.mean(tail * tail))) if len(tail) else 0.0
-            if rms < SILENCE_RMS:
-                # Speaker paused. Do not transcribe silence: Whisper hallucinates on it.
-                self.on_result({"type": "level", "rms": rms, "speaking": False})
-                continue
-            t0 = time.time()
             try:
-                res = mlx_whisper.transcribe(
-                    audio,
-                    path_or_hf_repo=self.model_name,
-                    language=self.language,
-                    fp16=True,
-                    temperature=0.0,
-                    condition_on_previous_text=False,
-                    no_speech_threshold=0.5,
-                    initial_prompt=self._context or None,
-                    verbose=None,
-                )
-            except Exception as e:  # noqa: BLE001
-                log.exception("transcribe failed")
-                self.on_result({"type": "error", "message": str(e)})
-                continue
-            dt = time.time() - t0
-            text = (res.get("text") or "").strip()
-            log.info("%.2fs for %.1fs audio (rms %.3f): %s", dt, len(audio) / SAMPLE_RATE, rms, text[-80:])
-            if text and text != last_text:
-                last_text = text
-            self.on_result({
-                "type": "hyp",
-                "text": text,
-                "window_sec": len(audio) / SAMPLE_RATE,
-                "latency_ms": int(dt * 1000),
-                "rms": rms,
-                "speaking": True,
-            })
+                self._step(mlx_whisper)
+            except Exception:  # noqa: BLE001
+                # Never let the worker die mid-session; log and carry on with the next window.
+                log.exception("whisper step failed")
+                time.sleep(0.5)
+
+    def _step(self, mlx_whisper):
+        audio, new = self._snapshot()
+        if audio is None or new < int(0.3 * SAMPLE_RATE):
+            return
+        tail = audio[-int(1.5 * SAMPLE_RATE):]
+        rms = float(np.sqrt(np.mean(tail * tail))) if len(tail) else 0.0
+        if rms < SILENCE_RMS:
+            # Speaker paused. Do not transcribe silence: Whisper hallucinates on it.
+            self.on_result({"type": "level", "rms": rms, "speaking": False})
+            return
+        t0 = time.time()
+        res = mlx_whisper.transcribe(
+            audio,
+            path_or_hf_repo=self.model_name,
+            language=self.language,
+            fp16=True,
+            temperature=TEMPERATURES,
+            compression_ratio_threshold=LOOP_COMPRESSION_RATIO,
+            logprob_threshold=None,
+            condition_on_previous_text=False,
+            no_speech_threshold=0.5,
+            initial_prompt=self._context or None,
+            verbose=None,
+        )
+        dt = time.time() - t0
+        text = (res.get("text") or "").strip()
+        if text and looks_like_loop(text):
+            log.info("%.2fs dropped looping window (ratio %.2f): %s", dt, compression_ratio(text), text[-80:])
+            self.on_result({"type": "level", "rms": rms, "speaking": True, "dropped": "loop"})
+            return
+        log.info("%.2fs for %.1fs audio (rms %.3f): %s", dt, len(audio) / SAMPLE_RATE, rms, text[-80:])
+        self.on_result({
+            "type": "hyp",
+            "text": text,
+            "window_sec": len(audio) / SAMPLE_RATE,
+            "latency_ms": int(dt * 1000),
+            "rms": rms,
+            "speaking": True,
+        })

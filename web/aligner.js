@@ -152,6 +152,27 @@ export function align(script, hypWords, cursor, options = {}) {
   return { cursor: best.cursor, score: best.score, matches: best.matches };
 }
 
+// True when the END of a hypothesis is a recognizer stutter ("safe and safe and
+// safe and", "assistant assistant assistant assistant", a whole phrase repeated back
+// to back). Emphatic speech like "no no no, that is not it" is left alone: the repeat
+// must run right up to the last word, and a single word needs four copies.
+export function isDegenerate(words) {
+  const t = words.slice(-16);
+  if (t.length < 4) return false;
+  const tail = t.slice(-8);
+  if (tail.length >= 6 && new Set(tail).size <= tail.length / 2) return true;
+  for (let n = 1; n <= 8; n++) {
+    const reps = n === 1 ? 4 : n <= 3 ? 3 : 2;
+    const i = t.length - reps * n;
+    if (i < 0) continue;
+    const g = t.slice(i, i + n).join(" ");
+    let same = true;
+    for (let r = 1; r < reps && same; r++) same = t.slice(i + r * n, i + (r + 1) * n).join(" ") === g;
+    if (same) return true;
+  }
+  return false;
+}
+
 // Convenience for the UI: words around the cursor to bias the decoder.
 export function contextAround(script, cursor, before = 10, after = 30) {
   const lo = Math.max(0, cursor - before);

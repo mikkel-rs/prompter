@@ -43,9 +43,25 @@ kbd { display: inline-block; background: #222; border: 1px solid #3a3a3a; border
 .meter { height: 6px; background: #222; border-radius: 3px; overflow: hidden; }
 #level { height: 100%; width: 0; background: #42c76d; transition: width 80ms linear; }
 #status { font-size: 12px; min-height: 16px; }
+#awake { font-size: 11px; margin-top: 4px; }
+#awake.warn { color: #f0b429; }
 
 #stage { position: relative; flex: 1; height: 100vh; overflow: hidden; }
 #btn-show-rail { position: absolute; top: 10px; left: 10px; z-index: 5; opacity: .35; }
+.pill {
+  position: absolute; top: 12px; right: 14px; z-index: 4; display: flex; align-items: center; gap: 8px;
+  padding: 5px 11px; border-radius: 999px; background: rgba(20, 20, 20, .8); color: #cfcfcf;
+  font-size: 13px; opacity: .85; pointer-events: none; letter-spacing: .01em;
+}
+.pill[hidden] { display: none; }
+.pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
+.pill.ok .dot { background: #42c76d; }
+.pill.ok.quiet .dot { background: #8a8a8a; }
+.pill.reconnecting .dot { background: #f0b429; animation: blink 1s infinite; }
+.pill.mic .dot { background: #e53935; animation: blink .6s infinite; }
+.pill .awake { color: #8fb8ff; padding-left: 8px; border-left: 1px solid #444; }
+.pill .awake[hidden] { display: none; }
+@keyframes blink { 50% { opacity: .25; } }
 #btn-show-rail:hover { opacity: 1; }
 #eyeline-marker {
   position: absolute; left: 0; right: 0; top: var(--eyeline); height: 0;
