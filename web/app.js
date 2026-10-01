@@ -358,6 +358,14 @@ function bind() {
   $("editor-cancel").addEventListener("click", closeEditor);
 
   $("btn-listen").addEventListener("click", toggleListening);
+  $("btn-quit").addEventListener("click", async () => {
+    if (!confirm("Stop the prompter server? The Mac can sleep again afterwards. You can start it again from the Prompter app.")) return;
+    await stopListening("stopping server");
+    try { await fetch("/api/shutdown", { method: "POST" }); } catch {}
+    setStatus("server stopped. You can close this tab.");
+    state.awake.server = { enabled: false, active: false, unreachable: true };
+    renderAwake();
+  });
   $("btn-reset").addEventListener("click", () => { setCursor(-1, true); snapScroll(); });
   $("btn-fullscreen").addEventListener("click", toggleFullscreen);
   $("btn-debug").addEventListener("click", () => { state.settings.debug = !state.settings.debug; applySettings(); renderDebug(); });

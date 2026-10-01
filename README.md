@@ -22,6 +22,16 @@ uv run uvicorn server.main:app --host 127.0.0.1 --port 8765
 
 Open http://localhost:8765 in Chrome. The first start downloads `whisper-large-v3-turbo` (about 1.6 GB) into the Hugging Face cache. The left panel shows `whisper model: ready` when it is loaded.
 
+## Desktop app
+
+```bash
+uv run --with pillow python launcher/make_app.py
+```
+
+That puts `Prompter.app` on the Desktop. Double-click it: it starts the server if it is not running, waits for it, and opens the page in Chrome. Clicking it again just opens the page. The server log is in `~/Library/Logs/prompter.log`. Pass a path to build it somewhere else, for example `/Applications/Prompter.app`. Rebuild it if you move the repository.
+
+Stopping: the **Quit** button in the left panel shuts the server down (and with it the keep-awake). If you just close the tab, the server exits on its own after 20 minutes without a page (`PROMPTER_IDLE_EXIT_MIN`, 0 disables).
+
 ## Use
 
 1. Put scripts as `.md` or `.txt` files in `scripts/`, or create them with **New** in the app. Markdown headings render as section titles. Blank lines separate paragraphs. Anything in `[square brackets]` is a note to yourself: it is shown dimmed on the prompter but ignored by the tracking, so `[pause]`, `[look up]` or `[slide 4]` never hold the cursor.
@@ -80,6 +90,7 @@ In the browser console, `__prompter.hyp("some spoken words")` feeds a hypothesis
 server/main.py     FastAPI: static files, scripts API, /ws/stt
 server/stt.py      ring buffer + MLX Whisper worker + silence gate
 server/keepawake.py caffeinate wrapper that keeps the Mac awake while the server runs
+launcher/make_app.py builds the double-clickable Prompter.app
 web/aligner.js     pure alignment logic (tested)
 web/app.js         UI state, rendering, scrolling, keys
 web/stt/           browser and whisper backends, PCM worklet
